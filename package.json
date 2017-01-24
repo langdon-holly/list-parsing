@@ -1,7 +1,7 @@
 {
   "name": "list-parsing",
   "version": "0.0.0",
-  "description": "library for building parsers using parser combinators",
+  "description": "(sequence/string parser) combinator library",
   "main": "parse.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
