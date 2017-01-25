@@ -102,9 +102,9 @@ function seq() {
   if (args.length == 2) {
     var contFirst = args[0].noMore || doomed(args[1])
                     ? fail
-                    : {parseChar:
+                    : {parseElem:
                          function (chr) {
-                           return seq(args[0].parseChar(chr), args[1]);},
+                           return seq(args[0].parseElem(chr), args[1]);},
                        result: [false],
                        noMore: false,
                        futureSuccess: args[0].futureSuccess
@@ -129,9 +129,9 @@ function then(parser, fn) {
   if (args.length == 2) {
     var contFirst = parser.noMore
                     ? fail
-                    : {parseChar:
+                    : {parseElem:
                          function (chr) {
-                           return then(parser.parseChar(chr), fn);},
+                           return then(parser.parseElem(chr), fn);},
                        result: [false],
                        noMore: false,
                        futureSuccess: false};
@@ -144,8 +144,8 @@ function then(parser, fn) {
 exports.then = then;
 
 function character(chr0) {
-  return {parseChar: function (chr1) {
-            return chr0 === chr1 ? {parseChar: function () {return fail;},
+  return {parseElem: function (chr1) {
+            return chr0 === chr1 ? {parseElem: function () {return fail;},
                                     result: [true, chr0],
                                     noMore: true,
                                     futureSuccess: false}
@@ -156,9 +156,9 @@ function character(chr0) {
 
 function ciCharacter(chr0) {
   chr0 = chr0.toUpperCase();
-  return {parseChar: function (chr1) {
+  return {parseElem: function (chr1) {
             var chr2 = chr1.toUpperCase();
-            return chr0 === chr2 ? {parseChar: function () {return fail;},
+            return chr0 === chr2 ? {parseElem: function () {return fail;},
                                     result: [true, chr1],
                                     noMore: true,
                                     futureSuccess: false}
@@ -185,13 +185,13 @@ function ciString(str) {
                             + concat(arr.slice(1, arr.length));});}
 exports.ciString = ciString;
 
-var fail = {parseChar: function() {return fail;},
+var fail = {parseElem: function() {return fail;},
             result: [false],
             noMore: true,
             futureSuccess: false};
 exports.fail = fail;
 
-var anything = {parseChar: function(chr) {
+var anything = {parseElem: function(chr) {
                   return mapParser(anything,
                                    function (pt) {return chr + pt;});},
                 result: [true, ''],
@@ -200,8 +200,8 @@ var anything = {parseChar: function(chr) {
 exports.anything = anything
 
 function many(parser) {
-  return {parseChar: function(chr) {
-            return many1(parser).parseChar(chr);},
+  return {parseElem: function(chr) {
+            return many1(parser).parseElem(chr);},
           result: [true, []],
           noMore: parser.noMore,
           futureSuccess: parser.futureSuccess};}
@@ -210,8 +210,8 @@ exports.many = many;
 function manyCount(fn, start) {
   start = start || 0;
 
-  return {parseChar: function(chr) {
-            return many1Count(fn, start).parseChar(chr);},
+  return {parseElem: function(chr) {
+            return many1Count(fn, start).parseElem(chr);},
           result: [true, []],
           noMore: fn(start).noMore,
           futureSuccess: fn(start).futureSuccess};}
@@ -234,7 +234,7 @@ function parse(parser, str, startIndex) {
 
   if (doomed(parser)) return [false, Math.max(startIndex, 0)];
   if (str.length == 0) return parser.result;
-  return parse(parser.parseChar(str.charAt(0)),
+  return parse(parser.parseElem(str.charAt(0)),
                str.slice(1),
                startIndex + 1);}
 exports.parse = parse;
@@ -247,7 +247,7 @@ function longestMatch(parser, str) {
   if (parser.result[0]) toReturn = [parser.result, 0];
   for (var index = 0; index < str.length && !doomed(parser); index++) {
     //console.log("parsing {" + str.charAt(index) + "}");
-    parser = parser.parseChar(str.charAt(index));
+    parser = parser.parseElem(str.charAt(index));
     if (parser.result[0]) toReturn = [parser.result, index + 1];
     if (!toReturn[0][0]) toReturn[1] = index;}
   return toReturn;}
@@ -258,7 +258,7 @@ function shortestMatch(parser, str) {
   if (parser.result[0]) return [parser.result, 0];
 
   for (var index = 0; index < str.length && !doomed(parser); index++) {
-    parser = parser.parseChar(str.charAt(index));
+    parser = parser.parseElem(str.charAt(index));
     if (parser.result[0]) return [parser.result, index + 1];}
   return [[false], index];}
 exports.shortestMatch = shortestMatch;
@@ -300,8 +300,8 @@ exports.opt = opt;
 
 function mapParser(parser, fn) {
   if (doomed(parser)) return fail;
-  return {parseChar: function(chr) {
-            return mapParser(parser.parseChar(chr), fn);},
+  return {parseElem: function(chr) {
+            return mapParser(parser.parseElem(chr), fn);},
           result: parser.result[0] ? [true, fn(parser.result[1])]
                                    : [false],
           noMore: parser.noMore,
@@ -310,8 +310,8 @@ exports.mapParser = mapParser;
 
 function maybeMap(parser, fn) {
   if (doomed(parser)) return fail;
-  return {parseChar: function(chr) {
-            return mapParser(parser.parseChar(chr), fn);},
+  return {parseElem: function(chr) {
+            return mapParser(parser.parseElem(chr), fn);},
           result: parser.result[0] ? fn(parser.result[1])
                                    : [false],
           noMore: parser.noMore,
@@ -320,8 +320,8 @@ exports.maybeMap = maybeMap;
 
 function assert(parser, fn) {
   if (doomed(parser)) return fail;
-  return {parseChar: function(chr) {
-            return mapParser(parser.parseChar(chr), fn);},
+  return {parseElem: function(chr) {
+            return mapParser(parser.parseElem(chr), fn);},
           result: parser.result[0] ? fn(parser.result[1])
                                      ? parser.result
                                      : [false]
@@ -331,10 +331,10 @@ function assert(parser, fn) {
 exports.assert = assert;
 
 function shortest(parser) {
-  return {parseChar: function(chr) {
+  return {parseElem: function(chr) {
             return parser.result[0]
                    ? fail
-                   : shortest(parser.parseChar(chr));},
+                   : shortest(parser.parseElem(chr));},
           result: parser.result,
           noMore: parser.noMore || parser.result[0],
           futureSuccess: false};}
@@ -376,9 +376,9 @@ function or() {
   if (args.length == 0) return fail;
   if (args.length == 1) return parser0;
   if (args.length == 2)
-    return {parseChar: function(chr) {
-              return or(parser0.parseChar(chr),
-                        parser1.parseChar(chr));},
+    return {parseElem: function(chr) {
+              return or(parser0.parseElem(chr),
+                        parser1.parseElem(chr));},
             result: parser0.result[0] ? parser0.result
                                       : parser1.result,
             noMore: parser0.noMore && parser1.noMore,
@@ -400,9 +400,9 @@ function and(parser0, parser1) {
         || doomed(parser1)
         || !parser0.result[0] && parser1.noMore
         || !parser1.result[0] && parser0.noMore) return fail;
-    return {parseChar: function(chr) {
-              return and(parser0.parseChar(chr),
-                         parser1.parseChar(chr));},
+    return {parseElem: function(chr) {
+              return and(parser0.parseElem(chr),
+                         parser1.parseElem(chr));},
             result: parser0.result[0] && parser1.result[0]
                     ? [true, [parser0.result[1], parser1.result[1]]]
                     : [false],
@@ -415,11 +415,11 @@ function and(parser0, parser1) {
 exports.and = and;
 
 function strOfLength(len) {
-  return len == 0 ? {parseChar: function() {return fail;},
+  return len == 0 ? {parseElem: function() {return fail;},
                      result: [true, ''],
                      noMore: true,
                      futureSuccess: false}
-                  : {parseChar: function(chr) {
+                  : {parseElem: function(chr) {
                        return mapParser(strOfLength(len - 1),
                                         function (pt) {
                                           return chr + pt;});},
@@ -429,8 +429,8 @@ function strOfLength(len) {
 exports.strOfLength = strOfLength;
 
 function not(parser) {
-  return {parseChar: function(chr) {
-            return mapParser(not(parser.parseChar(chr)),
+  return {parseElem: function(chr) {
+            return mapParser(not(parser.parseElem(chr)),
                              function(pt) {return chr + pt;});},
           result: parser.result[0] ? [false] : [true, ''],
           noMore: parser.futureSuccess,
@@ -443,7 +443,7 @@ function charNot() {
                    function(pt) {return pt[0];});}
 exports.charNot = charNot;
 
-var nothing = {parseChar: function() {return fail;},
+var nothing = {parseElem: function() {return fail;},
                result: [true, ''],
                noMore: true,
                futureSuccess: false};
@@ -537,7 +537,7 @@ function recurse(inTermsOfThis, optimistic) {
           break;}}
       return index;}
 
-    return {parseChar: function(chr) {
+    return {parseElem: function(chr) {
                          var index = findCharIndex(chr);
                          var newMatches = matches.characters[index].match;
 
@@ -551,7 +551,7 @@ function recurse(inTermsOfThis, optimistic) {
                            newMatches.parsers.parser
                              = matches.parsers
                                       .parser
-                                      .parseChar(chr);
+                                      .parseElem(chr);
                            newMatches.parsers.parsed
                              = true;}
 
@@ -561,12 +561,12 @@ function recurse(inTermsOfThis, optimistic) {
                              = matches
                                .parsers
                                .defaultParser
-                               .parseChar(chr);
+                               .parseElem(chr);
                            newMatches.parsers.undefaultParser
                              = matches
                                .parsers
                                .undefaultParser
-                               .parseChar(chr);
+                               .parseElem(chr);
                            matches.characters[index].match.parsers.primaryParser
                              = 'default';}
 
