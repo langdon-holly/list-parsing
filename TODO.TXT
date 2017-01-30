@@ -1,3 +1,2 @@
-* result method
 * better syntax-error message
 
