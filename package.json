@@ -1,6 +1,6 @@
 {
   "name": "list-parsing",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "(sequence/string parser) combinator library",
   "main": "main.js",
   "scripts": {
