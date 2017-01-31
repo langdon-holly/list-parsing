@@ -86,6 +86,30 @@ if (!Array.from) {
   }());
 }
 
+// Helpers
+
+function arrayOf(elem) {return [elem];}
+
+function consArray
+(firstAndRest)
+{return [firstAndRest[0]].concat(firstAndRest[1]);}
+
+function returnFail() {return fail;}
+
+function join(arr) {return arr.join('');}
+
+function returnNothing() {return [false];}
+
+function just(val) {return [true, val];}
+
+function notDoomed(parser) {return !doomed(parser);}
+
+function maybeToArray(maybe) {return maybe[0] ? [maybe[1]] : [];}
+
+function recursiveContradiction
+()
+{throw new Error("recursive parser contradicts itself");}
+
 // Stuff
 
 var exports = module.exports;
@@ -93,12 +117,9 @@ var exports = module.exports;
 function seq() {
   var args = arguments;
 
-  if (args.length == 0) return mapParser(nothing,
-                                         function(pt) {
-                                           return [];});
+  if (args.length == 0) return mapParser(nothing, _.stubArray);
   if (args.length == 1) return mapParser(args[0],
-                                         function(pt) {
-                                           return [pt];});
+                                         arrayOf);
   if (args.length == 2) {
     var contFirst = args[0].noMore || doomed(args[1])
                     ? fail
@@ -119,7 +140,7 @@ function seq() {
   return mapParser(seq(args[0],
                        seq.apply(this,
                                  Array.from(args).slice(1, args.length))),
-                   function(arr) {return [arr[0]].concat(arr[1]);});}
+                   consArray);}
 exports.seq = seq;
 
 function then(parser, fn) {
@@ -147,7 +168,7 @@ exports.then = then;
 
 function character(chr0) {
   return {parseElem: function (chr1) {
-            return chr0 === chr1 ? {parseElem: function () {return fail;},
+            return chr0 === chr1 ? {parseElem: returnFail,
                                     match: true,
                                     result: chr0,
                                     noMore: true,
@@ -162,7 +183,7 @@ function ciCharacter(chr0) {
   chr0 = chr0.toUpperCase();
   return {parseElem: function (chr1) {
             var chr2 = chr1.toUpperCase();
-            return chr0 === chr2 ? {parseElem: function () {return fail;},
+            return chr0 === chr2 ? {parseElem: returnFail,
                                     match: true,
                                     result: chr1,
                                     noMore: true,
@@ -174,24 +195,14 @@ function ciCharacter(chr0) {
           futureSuccess: false};}
 
 function string(str) {
-  return mapParser(seq.apply(this, str.split('').map(function (chr) {
-                     return character(chr);})),
-                   function concat(arr) {
-                     if (arr.length == 0) return '';
-                     return arr[0]
-                            + concat(arr.slice(1, arr.length));});}
+  return mapParser(seq.apply(this, str.split('').map(character)), join);}
 exports.string = string;
 
 function ciString(str) {
-  return mapParser(seq.apply(this, str.split('').map(function (chr) {
-                     return ciCharacter(chr);})),
-                   function concat(arr) {
-                     if (arr.length == 0) return '';
-                     return arr[0]
-                            + concat(arr.slice(1, arr.length));});}
+  return mapParser(seq.apply(this, str.split('').map(ciCharacter)), join);}
 exports.ciString = ciString;
 
-var fail = {parseElem: function() {return fail;},
+var fail = {parseElem: returnFail,
             match: false,
             result: undefined,
             noMore: true,
@@ -228,15 +239,19 @@ function manyCount(fn, start) {
 exports.manyCount = manyCount;
 
 function many1(parser) {
-  return mapParser(seq(and(not(nothing), parser), many(parser)),
-                   function(pt) {return [pt[0][1]].concat(pt[1]);});}
+  return mapParser
+         ( seq(mapParser(and(not(nothing), parser), _.last), many(parser))
+         , consArray);}
 exports.many1 = many1;
 
 function many1Count(fn, start) {
   start = start || 0;
 
-  return mapParser(seq(and(not(nothing), fn(start)), manyCount(fn, start + 1)),
-                   function(pt) {return [pt[0][1]].concat(pt[1]);});}
+  return mapParser
+         ( seq
+           ( mapParser(and(not(nothing), fn(start)), _.last)
+           , manyCount(fn, start + 1))
+         , consArray);}
 exports.many1Count = many1Count;
 
 function parse(parser, str, startIndex) {
@@ -276,38 +291,31 @@ function shortestMatch(parser, str) {
 exports.shortestMatch = shortestMatch;
 
 function sepByCount(elemFn, sepFn, atLeast1) {
-  if (!atLeast1) return or(mapParser(nothing,
-                                     function(pt) {
-                                       return [];}),
+  if (!atLeast1) return or(mapParser(nothing, _.stubArray),
                            sepByCount(elemFn, sepFn, true));
 
   return mapParser(seq(elemFn(0),
                        manyCount(function(index) {
                                    return before(sepFn(index), elemFn(index));},
                                  1)),
-                   function(pt) {
-                     return [pt[0]].concat(pt[1])});}
+                   consArray);}
 exports.sepByCount = sepByCount;
 
 function sepBy(element, separator) {
-  return sepByCount(function() {return element;},
-                    function() {return separator;});}
+  return sepByCount(_.constant(element),
+                    _.constant(separator));}
 exports.sepBy = sepBy;
 
 function sepBy1(element, separator) {
-  return sepByCount(function() {return element;},
-                    function() {return separator;},
+  return sepByCount(_.constant(element),
+                    _.constant(separator),
                     true);}
 exports.sepBy1 = sepBy1;
 
 function opt(parser) {
   return or(
-    mapParser(nothing,
-              function() {
-                return [false];}),
-    mapParser(parser,
-              function(pt) {
-                return [true, pt];}));}
+    mapParser(nothing, returnNothing),
+    mapParser(parser, just));}
 exports.opt = opt;
 
 function mapParser(parser, fn) {
@@ -353,15 +361,11 @@ function shortest(parser) {
 exports.shortest = shortest;
 
 function before(parser0, parser1) {
-  return mapParser(seq(parser0, parser1),
-                   function(arr) {
-                     return arr[1];});}
+  return mapParser(seq(parser0, parser1), _.last);}
 exports.before = before;
 
 function after(parser0, parser1) {
-  return mapParser(seq(parser0, parser1),
-                   function(arr) {
-                     return arr[0];});}
+  return mapParser(seq(parser0, parser1), _.head);}
 exports.after = after;
 
 function around(parser0, parser1, parser2) {
@@ -369,11 +373,11 @@ function around(parser0, parser1, parser2) {
 exports.around = around;
 
 function between(parser0, parser1) {
-  if (arguments.length == 0) return mapParser(nothing, function(pt){return []});
+  if (arguments.length == 0) return mapParser(nothing, stubArray);
   if (arguments.length == 1)
-    return mapParser(parser0, function(pt) {return [];});
+    return mapParser(parser0, stubArray);
   if (arguments.length == 2)
-    return mapParser(before(parser0, parser1), function(pt) {return [pt];});
+    return mapParser(before(parser0, parser1), arrayOf);
   return mapParser(seq(between(parser0, parser1),
                        between.apply(this,
                                      Array.prototype.slice.call(arguments, 2))),
@@ -381,7 +385,7 @@ function between(parser0, parser1) {
 exports.between = between;
 
 function or() {
-  var args = _.filter(arguments, function (parser) {return !doomed(parser);}),
+  var args = _.filter(arguments, notDoomed),
       parser0 = args[0],
       parser1 = args[1];
 
@@ -403,10 +407,8 @@ exports.or = or;
 function and(parser0, parser1) {
   var args = arguments;
 
-  if (args.length == 0) return mapParser(anything,
-                                         function() {return [];});
-  if (args.length == 1) return mapParser(parser0,
-                                         function(pt) {return [pt];});
+  if (args.length == 0) return mapParser(anything, _.stubArray);
+  if (args.length == 1) return mapParser(parser0, arrayOf);
   if (args.length == 2) {
     if (doomed(parser0)
         || doomed(parser1)
@@ -422,11 +424,11 @@ function and(parser0, parser1) {
   return mapParser(and(parser0,
                        and.apply(this,
                                  Array.from(args).slice(1, args.length))),
-                   function(arr) {return [arr[0]].concat(arr[1])});}
+                   consArray);}
 exports.and = and;
 
 function strOfLength(len) {
-  return len == 0 ? {parseElem: function() {return fail;},
+  return len == 0 ? {parseElem: returnFail,
                      match: true,
                      result: '',
                      noMore: true,
@@ -453,11 +455,12 @@ exports.not = not;
 
 function charNot() {
   var args = arguments;
-  return mapParser(and.apply(this, [strOfLength(1)].concat(_.map(args, not))),
-                   function(pt) {return pt[0];});}
+  return mapParser
+         ( and.apply(this, [strOfLength(1)].concat(_.map(args, not)))
+         , _.head);}
 exports.charNot = charNot;
 
-var nothing = {parseElem: function() {return fail;},
+var nothing = {parseElem: returnFail,
                match: true,
                result: undefined,
                noMore: true,
@@ -514,28 +517,19 @@ function alwaysSuccessful(parser) {
 exports.alwaysSuccessful = alwaysSuccessful;
 
 function recurseLeft(recursive, nonrecursive, emptyCriteria) {
-  return mapParser(recursive.match && emptyCriteria
-                   ? seq(opt(nonrecursive), many(recursive))
-                   : seq(mapParser(nonrecursive,
-                                   function(pt) {return [true, pt];}),
-                         many(recursive)),
-                   function(pt) {
-                     return (pt[0][0]
-                             ? [pt[0][1]]
-                             : [])
-                            .concat(pt[1]);});}
+  return mapParser
+         ( recursive.match && emptyCriteria
+           ? seq(mapParser(opt(nonrecursive), maybeToArray), many(recursive))
+           : seq(mapParser(nonrecursive, arrayOf), many(recursive))
+         , _.flatten);}
 exports.recurseLeft = recurseLeft;
 
 function recurseRight(recursive, nonrecursive, emptyCriteria) {
-  return mapParser(recursive.match && emptyCriteria
-                   ? seq(many(recursive), opt(nonrecursive))
-                   : seq(many(recursive),
-                         mapParser(nonrecursive,
-                                   function(pt) {return [true, pt];})),
-                   function(pt) {
-                     return pt[0].concat((pt[1][0]
-                                          ? [pt[1][1]]
-                                          : []));});}
+  return mapParser
+         ( recursive.match && emptyCriteria
+           ? seq(many(recursive), mapParser(opt(nonrecursive), maybeToArray))
+           : seq(many(recursive), mapParser(nonrecursive, arrayOf))
+         , _.flatten);}
 exports.recurseRight = recurseRight;
 
 function recurse(inTermsOfThis, optimistic) {
@@ -593,8 +587,7 @@ function recurse(inTermsOfThis, optimistic) {
                  ? matches.parsers.parser.match
                    === matches.parsers.defaultParser.match
                    ? matches.parsers.parser.match
-                   : function() {
-                       throw new Error("recursive parser contradicts itself");}()
+                   : recursiveContradiction()
                  : matches.parsers.defaultParser.match,
              result:
                function(){
@@ -604,11 +597,7 @@ function recurse(inTermsOfThis, optimistic) {
                           ? matches.parsers.parser.match
                             === matches.parsers.defaultParser.match
                             ? matches.parsers.parser.result
-                            : function() {
-                                throw new
-                                        Error
-                                        ("recursive parser contradicts itself")}
-                              ()
+                            : recursiveContradiction()
                           : matches.parsers.defaultParser.result},
              noMore: false,
              futureSuccess: false};}
