@@ -316,7 +316,7 @@ function sepByCount(elemFn, sepFn, atLeast1) {
   return map(seq(elemFn(0),
                  manyCount(function(index) {
                              return before(sepFn(index), elemFn(index));},
-                                 1)),
+                           1)),
                    consArray);}
 exports.sepByCount = sepByCount;
 
