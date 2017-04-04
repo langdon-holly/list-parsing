@@ -120,17 +120,20 @@ function seq() {
   if (args.length == 1) return map(args[0],
                                    arrayOf);
   if (args.length == 2) {
-    var contFirst = args[0].noMore || doomed(args[1])
-                    ? fail
-                    : {parseElem:
-                         function (elem) {
-                           return seq(args[0].parseElem(elem), args[1]);},
-                       match: false,
-                       result: undefined,
-                       noMore: false,
-                       futureSuccess: args[0].futureSuccess
-                                      && (args[1].match
-                                          || alwaysSuccessful(args[1]))};
+    var contFirst
+    = args[0].noMore || doomed(args[1])
+      ? fail
+      : { parseElem:
+            function (elem) {
+              return seq(args[0].parseElem(elem), args[1]);},
+          match: false,
+          result: undefined,
+          noMore: false,
+          futureSuccess: args[0].futureSuccess
+                         && (args[1].match
+                             || alwaysSuccessful(args[1])),
+          trace: args[0].trace,
+          expect: args[0].expect};
     return args[0].match ? or(contFirst,
                               map(args[1],
                                   function (pt) {
@@ -148,15 +151,18 @@ function then(parser, fn) {
   if (args.length == 0) throw new Error("then needs at least 1 argument");
   if (args.length == 1) return parser;
   if (args.length == 2) {
-    var contFirst = parser.noMore
-                    ? fail
-                    : {parseElem:
-                         function (elem) {
-                           return then(parser.parseElem(elem), fn);},
-                       match: false,
-                       result: undefined,
-                       noMore: false,
-                       futureSuccess: false};
+    var contFirst
+    = parser.noMore
+      ? fail
+      : { parseElem:
+            function (elem) {
+              return then(parser.parseElem(elem), fn);},
+          match: false,
+          result: undefined,
+          noMore: false,
+          futureSuccess: false,
+          trace: parser.trace,
+          expect: parser.expect};
     return parser.match ? or(contFirst,
                              fn(parser.result))
                         : contFirst;}
@@ -166,34 +172,41 @@ function then(parser, fn) {
 exports.then = then;
 
 function element(elem0) {
-  return {parseElem: function (elem1) {
-            return elem0 === elem1 ? {parseElem: returnFail,
-                                      match: true,
-                                      result: elem0,
-                                      noMore: true,
-                                      futureSuccess: false}
-                                   : fail},
-          match: false,
-          result: undefined,
-          noMore: false,
-          futureSuccess: false};}
+  return { parseElem: function (elem1) {
+             return elem0 === elem1 ? {parseElem: returnFail,
+                                       match: true,
+                                       result: elem0,
+                                       noMore: true,
+                                       futureSuccess: false,
+                                       expect: []}
+                                    : fail},
+           match: false,
+           result: undefined,
+           noMore: false,
+           futureSuccess: false,
+           trace: [],
+           expect: []};}
 exports.elem = element;
 
 function ciCharacter(chr0) {
   chr0 = chr0.toUpperCase();
-  return {parseElem: function (elem) {
-            if (!_.isString(elem)) return fail;
-            var chr1 = elem.toUpperCase();
-            return chr0 === chr1 ? {parseElem: returnFail,
-                                    match: true,
-                                    result: elem,
-                                    noMore: true,
-                                    futureSuccess: false}
-                                 : fail},
-          match: false,
-          result: undefined,
-          noMore: false,
-          futureSuccess: false};}
+  return { parseElem: function (elem) {
+             if (!_.isString(elem)) return fail;
+             var chr1 = elem.toUpperCase();
+             return chr0 === chr1
+                    ? { parseElem: returnFail,
+                        match: true,
+                        result: elem,
+                        noMore: true,
+                        futureSuccess: false,
+                        expect: []}
+                    : fail},
+           match: false,
+           result: undefined,
+           noMore: false,
+           futureSuccess: false,
+           trace: [],
+           expect: []};}
 
 function string(str) {
   return map(seq.apply(this, _.toArray(str).map(element)), join);}
@@ -203,39 +216,49 @@ function ciString(str) {
   return map(seq.apply(this, _.toArray(str).map(ciCharacter)), join);}
 exports.ciString = ciString;
 
-var fail = {parseElem: returnFail,
-            match: false,
-            result: undefined,
-            noMore: true,
-            futureSuccess: false};
+var fail
+= { parseElem: returnFail,
+    match: false,
+    result: undefined,
+    noMore: true,
+    futureSuccess: false,
+    trace: [],
+    expect: []};
 exports.fail = fail;
 
 function succeedWith (result)
-{ var toReturn = { match: true,
-                   result: result,
-                   noMore: false,
-                   futureSuccess: true};
+{ var toReturn
+  = { match: true,
+      result: result,
+      noMore: false,
+      futureSuccess: true,
+      expect: []};
   toReturn.parseElem = _.constant(toReturn);
   return toReturn;}
                    
 exports.succeedWith = succeedWith;
 
-var anything = {parseElem: function(elem) {
-                  return map(anything,
-                             function (pt) {return [elem].concat(pt);});},
-                match: true,
-                result: [],
-                noMore: false,
-                futureSuccess: true};
+var anything
+= { parseElem: function(elem) {
+      return map(anything,
+                 function (pt) {return [elem].concat(pt);});},
+    match: true,
+    result: [],
+    noMore: false,
+    futureSuccess: true,
+    trace: [],
+    expect: []};
 exports.anything = anything;
 
 function many(parser) {
-  return {parseElem: function(elem) {
-            return many1(parser).parseElem(elem);},
-          match: true,
-          result: [],
-          noMore: parser.noMore,
-          futureSuccess: parser.futureSuccess};}
+  return { parseElem: function(elem) {
+             return many1(parser).parseElem(elem);},
+           match: true,
+           result: [],
+           noMore: parser.noMore,
+           futureSuccess: parser.futureSuccess,
+           trace: [],
+           expect: []};}
 exports.many = many;
 
 function manyCount(fn, start) {
@@ -246,7 +269,9 @@ function manyCount(fn, start) {
           match: true,
           result: [],
           noMore: fn(start).noMore,
-          futureSuccess: fn(start).futureSuccess};}
+          futureSuccess: fn(start).futureSuccess,
+          trace: [],
+          expect: []};}
 exports.manyCount = manyCount;
 
 function many1(parser) {
@@ -339,44 +364,70 @@ exports.opt = opt;
 
 function map(parser, fn) {
   if (doomed(parser)) return fail;
-  return {parseElem: function(elem) {
-            return map(parser.parseElem(elem), fn);},
-          match: parser.match,
-          result: parser.match ? fn(parser.result) : undefined,
-          noMore: parser.noMore,
-          futureSuccess: parser.futureSuccess};}
+  return _.assign
+         ( {}
+         , parser
+         , { parseElem: function(elem) {
+               return map(parser.parseElem(elem), fn);},
+             result: parser.match ? fn(parser.result) : undefined});}
 exports.map = map;
 
 function failYields(parser, result) {
   if (doomed(parser)) return succeedWith(result);
-  return {parseElem: function(elem) {
-            return failYields(parser.parseElem(elem), result);},
-          match: true,
-          result: parser.match ? parser.result : result,
-          noMore: false,
-          futureSuccess: true};}
+  return { parseElem: function(elem) {
+             return failYields(parser.parseElem(elem), result);},
+           match: true,
+           result: parser.match ? parser.result : result,
+           noMore: false,
+           futureSuccess: true,
+           trace: parser.trace,
+           expect: []};}
 exports.failYields = failYields;
 
 function assert(parser, fn) {
   if (doomed(parser)) return fail;
   var match = parser.match && fn(parser.result);
-  return {parseElem: function(elem) {
-            return assert(parser.parseElem(elem), fn);},
-          match: match,
-          result: match ? parser.result : undefined,
-          noMore: parser.noMore,
-          futureSuccess: false};}
+  return { parseElem: function(elem) {
+             return assert(parser.parseElem(elem), fn);},
+           match: match,
+           result: match ? parser.result : undefined,
+           noMore: parser.noMore,
+           futureSuccess: false,
+           trace: parser.trace,
+           expect: parser.expect};}
 exports.assert = assert;
 
+function name
+  (parser, aName)
+  {return _.assign
+          ( {}
+          , parser
+          , { parseElem
+              : function(elem) {return name(parser.parseElem(elem), aName);}
+            , trace: [name].concat(parser.trace)});}
+exports.name = name;
+
+function unName
+  (parser)
+  {return _.assign
+          ( {}
+          , parser
+          , { parseElem
+              : function(elem) {return name(parser.parseElem(elem), aName);}
+            , trace: []});}
+exports.unName = unName;
+
 function shortest(parser) {
-  return {parseElem: function(elem) {
-            return parser.match
-                   ? fail
-                   : shortest(parser.parseElem(elem));},
-          match: parser.match,
-          result: parser.result,
-          noMore: parser.noMore || parser.match,
-          futureSuccess: false};}
+  return { parseElem: function(elem) {
+             return parser.match
+                    ? fail
+                    : shortest(parser.parseElem(elem));},
+           match: parser.match,
+           result: parser.result,
+           noMore: parser.noMore || parser.match,
+           futureSuccess: false,
+           trace: parser.trace,
+           expect: parser.match ? [] : parser.expect};}
 exports.shortest = shortest;
 
 function before(parser0, parser1) {
@@ -411,13 +462,15 @@ function or() {
   if (args.length == 0) return fail;
   if (args.length == 1) return parser0;
   if (args.length == 2)
-    return {parseElem: function(elem) {
-              return or(parser0.parseElem(elem),
-                        parser1.parseElem(elem));},
-            match: parser0.match || parser1.match,
-            result: parser0.match ? parser0.result : parser1.result,
-            noMore: parser0.noMore && parser1.noMore,
-            futureSuccess: parser0.futureSuccess || parser1.futureSuccess};
+    return { parseElem: function(elem) {
+               return or(parser0.parseElem(elem),
+                         parser1.parseElem(elem));},
+             match: parser0.match || parser1.match,
+             result: parser0.match ? parser0.result : parser1.result,
+             noMore: parser0.noMore && parser1.noMore,
+             futureSuccess: parser0.futureSuccess || parser1.futureSuccess,
+             trace: [],
+             expect: ["(" + parser0.expect + ") or (" + parser1.expect + ")"]};
   return or(args[0],
             or.apply(this,
                      Array.from(args).slice(1, args.length)));}
@@ -433,13 +486,20 @@ function and(parser0, parser1) {
         || doomed(parser1)
         || !parser0.match && parser1.noMore
         || !parser1.match && parser0.noMore) return fail;
-    return {parseElem: function(elem) {
-              return and(parser0.parseElem(elem),
-                         parser1.parseElem(elem));},
-            match: parser0.match && parser1.match,
-            result: [parser0.result, parser1.result],
-            noMore: parser0.noMore || parser1.noMore,
-            futureSuccess: parser0.futureSuccess && parser1.futureSuccess};}
+    return { parseElem: function(elem) {
+               return and(parser0.parseElem(elem),
+                          parser1.parseElem(elem));},
+             match: parser0.match && parser1.match,
+             result: [parser0.result, parser1.result],
+             noMore: parser0.noMore || parser1.noMore,
+             futureSuccess: parser0.futureSuccess && parser1.futureSuccess,
+             trace: [],
+             expect
+             : [ "("
+                 + parser0.expect
+                 + ") and ("
+                 + parser1.expect
+                 + ")"]};}
   return map(and(parser0,
                  and.apply(this,
                            Array.from(args).slice(1, args.length))),
@@ -449,19 +509,23 @@ exports.and = and;
 function lengthIs(len) {
   if (!_.isFinite(len) || len < 0 || len % 1 != 0)
     throw new TypeError('Argument to lengthIs must be nonnegative integer');
-  return len == 0 ? {parseElem: returnFail,
-                     match: true,
-                     result: [],
-                     noMore: true,
-                     futureSuccess: false}
-                  : {parseElem: function(elem) {
-                       return map(lengthIs(len - 1),
-                                  function (pt) {
-                                    return [elem].concat(pt);});},
-                     match: false,
-                     result: undefined,
-                     noMore: false,
-                     futureSuccess: false};}
+  return len == 0 ? { parseElem: returnFail,
+                      match: true,
+                      result: [],
+                      noMore: true,
+                      futureSuccess: false,
+                      trace: [],
+                      expect: []}
+                  : { parseElem: function(elem) {
+                        return map(lengthIs(len - 1),
+                                   function (pt) {
+                                     return [elem].concat(pt);});},
+                      match: false,
+                      result: undefined,
+                      noMore: false,
+                      futureSuccess: false,
+                      trace: [],
+                      expect: []};}
 exports.lengthIs = lengthIs;
 
 function not(parser) {
@@ -471,7 +535,9 @@ function not(parser) {
           match: !parser.match,
           result: parser.match ? undefined : [],
           noMore: parser.futureSuccess,
-          futureSuccess: parser.noMore}}
+          futureSuccess: parser.noMore,
+          trace: parser.trace,
+          expect: []}}
 exports.not = not;
 
 function elemNot() {
@@ -481,11 +547,13 @@ function elemNot() {
          , _.flow(_.head, _.head));}
 exports.elemNot = elemNot;
 
-var nothing = {parseElem: returnFail,
-               match: true,
-               result: undefined,
-               noMore: true,
-               futureSuccess: false};
+var nothing = { parseElem: returnFail,
+                match: true,
+                result: undefined,
+                noMore: true,
+                futureSuccess: false,
+                trace: [],
+                expect: []};
 exports.nothing = nothing;
 
 var hSpaceChar = or(string('\t'),
@@ -621,7 +689,9 @@ function recurse(inTermsOfThis, optimistic) {
                             : recursiveContradiction()
                           : matches.parsers.defaultParser.result},
              noMore: false,
-             futureSuccess: false};}
+             futureSuccess: false,
+             trace: [],
+             expect: []};}
 
   var defaultEmpty = inTermsOfThis(optimistic ? anything : fail);
   var undefaultEmpty = inTermsOfThis(optimistic ? fail : anything);
