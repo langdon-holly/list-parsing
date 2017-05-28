@@ -98,13 +98,22 @@ function returnFail() {return fail;}
 
 function join(arr) {return arr.join('');}
 
-function returnNothing() {return [false];}
-
-function just(val) {return [true, val];}
+var mab // maybe
+= { nothing: {is: false}
+  , just: function(val) {return {is: true, val: val};}
+  , is: function(maybe) {return maybe.is}
+  , _val: function(maybe) {return maybe.val}
+  , def
+    : function(maybe, def) {return mab.is(maybe) ? mab._val(maybe) : def}
+  , map
+    : function(maybe, fn)
+      {return mab.is(maybe) ? mab.just(fn(mab._val(maybe))) : maybe}
+  , mapDef: function(maybe, def, fn) {return mab.def(mab.map(maybe, fn), def)}
+  , toArr
+    : function(maybe)
+      {return mab.mapDef(maybe, [], function(val) {return [val]})}}
 
 function notDoomed(parser) {return !doomed(parser);}
-
-function maybeToArray(maybe) {return maybe[0] ? [maybe[1]] : [];}
 
 function recursiveContradiction ()
 {throw new Error("recursive parser contradicts itself");}
@@ -113,33 +122,33 @@ function recursiveContradiction ()
 
 var exports = module.exports;
 
-function seq() {
+function seq(parser0, parser1) {
   var args = arguments;
 
   if (args.length == 0) return map(nothing, _.stubArray);
-  if (args.length == 1) return map(args[0],
+  if (args.length == 1) return map(parser0,
                                    arrayOf);
   if (args.length == 2) {
     var contFirst
-    = args[0].noMore || doomed(args[1])
-      ? fail
+    = parser0.noMore || doomed(parser1)
+      ? failTrace(parser0.trace)
       : { parseElem:
             function (elem) {
-              return seq(args[0].parseElem(elem), args[1]);},
+              return seq(parser0.parseElem(elem), parser1);},
           match: false,
           result: undefined,
           noMore: false,
-          futureSuccess: args[0].futureSuccess
-                         && (args[1].match
-                             || alwaysSuccessful(args[1])),
-          trace: args[0].trace,
-          expect: args[0].expect};
-    return args[0].match ? or(contFirst,
-                              map(args[1],
+          futureSuccess: parser0.futureSuccess
+                         && (parser1.match
+                             || alwaysSuccessful(parser1)),
+          trace: parser0.trace,
+          expect: parser0.expect};
+    return parser0.match ? or(contFirst,
+                              map(parser1,
                                   function (pt) {
-                                    return [args[0].result, pt];}))
+                                    return [parser0.result, pt];}))
                          : contFirst;}
-  return map(seq(args[0],
+  return map(seq(parser0,
                  seq.apply(this,
                            Array.from(args).slice(1, args.length))),
              consArray);}
@@ -153,7 +162,7 @@ function then(parser, fn) {
   if (args.length == 2) {
     var contFirst
     = parser.noMore
-      ? fail
+      ? failTrace(parser.trace)
       : { parseElem:
             function (elem) {
               return then(parser.parseElem(elem), fn);},
@@ -178,6 +187,7 @@ function element(elem0) {
                                        result: elem0,
                                        noMore: true,
                                        futureSuccess: false,
+                                       trace: [],
                                        expect: []}
                                     : fail},
            match: false,
@@ -225,6 +235,10 @@ var fail
     trace: [],
     expect: []};
 exports.fail = fail;
+
+function failTrace(trace)
+{return _.reduceRight
+        (trace, function(parser, frame) {return name(parser, frame);}, fail);}
 
 function succeedWith (result)
 { var toReturn
@@ -294,10 +308,10 @@ function parse(parser, arr, startIndex) {
   startIndex = startIndex || 0;
   arr = _.toArray(arr);
 
-  if (doomed(parser)) return [false, startIndex];
+  if (doomed(parser)) return [false, startIndex, parser.trace];
   if (arr.length == 0)
     return [ parser.match
-           , parser.match ? parser.result : -1];
+           , parser.match ? parser.result : -1, parser.trace];
   return parse(parser.parseElem(arr[0]),
                arr.slice(1),
                startIndex + 1);}
@@ -306,14 +320,19 @@ exports.parse = parse;
 function longestMatch(parser, arr) {
   arr = _.toArray(arr);
 
-  var toReturn = [false, -1];
+  var toReturn = [false, -1, parser.trace];
   for (var index = 0; index < arr.length; index++) {
-    if (doomed(parser)) return toReturn[0] ? toReturn : [false, index];
+    if (doomed(parser)) return toReturn[0]
+                        ? toReturn
+                        : [false, index, parser.trace];
     if (parser.match) toReturn = [true, parser.result, index];
 
+    //console.log("parsing: " + arr[index]);
     parser = parser.parseElem(arr[index]);}
 
-  if (doomed(parser)) return toReturn[0] ? toReturn : [false, arr.length];
+  if (doomed(parser)) return toReturn[0]
+                             ? toReturn
+                             : [false, arr.length, parser.trace];
   if (parser.match) toReturn = [true, parser.result, arr.length];
 
   return toReturn;}
@@ -324,14 +343,14 @@ function shortestMatch(parser, arr) {
 
   for (var index = 0; index < arr.length; index++) {
     if (parser.match) return [true, parser.result, index];
-    if (doomed(parser)) return [false, index];
+    if (doomed(parser)) return [false, index, parser.trace];
 
     parser = parser.parseElem(arr[index]);}
 
   if (parser.match) return [true, parser.result, arr.length];
-  if (doomed(parser)) return [false, arr.length];
+  if (doomed(parser)) return [false, arr.length, parser.trace];
 
-  return [false, -1];}
+  return [false, -1, parser.trace];}
 exports.shortestMatch = shortestMatch;
 
 function sepByCount(elemFn, sepFn, atLeast1) {
@@ -358,12 +377,12 @@ exports.sepBy1 = sepBy1;
 
 function opt(parser) {
   return or(
-    map(nothing, returnNothing),
-    map(parser, just));}
+    map(nothing, _.constant(mab.nothing)),
+    map(parser, mab.just));}
 exports.opt = opt;
 
 function map(parser, fn) {
-  if (doomed(parser)) return fail;
+  if (doomed(parser)) return failTrace(parser.trace);
   return _.assign
          ( {}
          , parser
@@ -385,7 +404,7 @@ function failYields(parser, result) {
 exports.failYields = failYields;
 
 function assert(parser, fn) {
-  if (doomed(parser)) return fail;
+  if (doomed(parser)) return failTrace(parser.trace);
   var match = parser.match && fn(parser.result);
   return { parseElem: function(elem) {
              return assert(parser.parseElem(elem), fn);},
@@ -403,9 +422,22 @@ function name
           ( {}
           , parser
           , { parseElem
-              : function(elem) {return name(parser.parseElem(elem), aName);}
-            , trace: [name].concat(parser.trace)});}
+              : function(elem)
+                  {return traced(parser.parseElem(elem), [[aName, 0]]);}});}
 exports.name = name;
+
+function traced
+  (parser, trace)
+  {return _.assign
+          ( {}
+          , parser
+          , { parseElem
+              : function(elem)
+                  {return traced
+                          ( parser.parseElem(elem)
+                          , _.assign([], trace, [undefined, trace[1] + 1]));}
+            , trace: trace.concat(parser.trace)});}
+exports.traced = traced;
 
 function unName
   (parser)
@@ -418,16 +450,16 @@ function unName
 exports.unName = unName;
 
 function shortest(parser) {
-  return { parseElem: function(elem) {
-             return parser.match
-                    ? fail
-                    : shortest(parser.parseElem(elem));},
-           match: parser.match,
-           result: parser.result,
-           noMore: parser.noMore || parser.match,
-           futureSuccess: false,
-           trace: parser.trace,
-           expect: parser.match ? [] : parser.expect};}
+  return _.assign
+         ( {}
+         , parser
+         , { parseElem: function(elem) {
+               return parser.match
+                      ? failTrace(parser.trace)
+                      : shortest(parser.parseElem(elem));},
+             noMore: parser.noMore || parser.match,
+             futureSuccess: false,
+             expect: parser.match ? [] : parser.expect});}
 exports.shortest = shortest;
 
 function before(parser0, parser1) {
@@ -471,7 +503,7 @@ function or() {
              futureSuccess: parser0.futureSuccess || parser1.futureSuccess,
              trace: [],
              expect: ["(" + parser0.expect + ") or (" + parser1.expect + ")"]};
-  return or(args[0],
+  return or(parser0,
             or.apply(this,
                      Array.from(args).slice(1, args.length)));}
 exports.or = or;
@@ -485,7 +517,7 @@ function and(parser0, parser1) {
     if (doomed(parser0)
         || doomed(parser1)
         || !parser0.match && parser1.noMore
-        || !parser1.match && parser0.noMore) return fail;
+        || !parser1.match && parser0.noMore) return failTrace(parser0.trace);
     return { parseElem: function(elem) {
                return and(parser0.parseElem(elem),
                           parser1.parseElem(elem));},
@@ -493,7 +525,7 @@ function and(parser0, parser1) {
              result: [parser0.result, parser1.result],
              noMore: parser0.noMore || parser1.noMore,
              futureSuccess: parser0.futureSuccess && parser1.futureSuccess,
-             trace: [],
+             trace: [parser0.trace],
              expect
              : [ "("
                  + parser0.expect
@@ -608,7 +640,7 @@ exports.alwaysSuccessful = alwaysSuccessful;
 function recurseLeft(recursive, nonrecursive, emptyCriteria) {
   return map
          ( recursive.match && emptyCriteria
-           ? seq(map(opt(nonrecursive), maybeToArray), many(recursive))
+           ? seq(map(opt(nonrecursive), mab.toArr), many(recursive))
            : seq(map(nonrecursive, arrayOf), many(recursive))
          , _.flatten);}
 exports.recurseLeft = recurseLeft;
@@ -616,7 +648,7 @@ exports.recurseLeft = recurseLeft;
 function recurseRight(recursive, nonrecursive, emptyCriteria) {
   return map
          ( recursive.match && emptyCriteria
-           ? seq(many(recursive), map(opt(nonrecursive), maybeToArray))
+           ? seq(many(recursive), map(opt(nonrecursive), mab.toArr))
            : seq(many(recursive), map(nonrecursive, arrayOf))
          , _.flatten);}
 exports.recurseRight = recurseRight;
@@ -625,7 +657,7 @@ function recurse(inTermsOfThis, optimistic) {
   optimistic = optimistic || false;
 
   function makeThis(matches) {
-    if (doomed(matches.parser)) return fail;
+    if (doomed(matches.parser)) return failTrace(matches.parser.trace);
 
     function findElemIndex(elem) {
       var index = matches.elems.length;
