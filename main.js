@@ -304,53 +304,63 @@ function many1Count(fn, start) {
          , consArray);}
 exports.many1Count = many1Count;
 
-function parse(parser, arr, startIndex) {
-  startIndex = startIndex || 0;
-  arr = _.toArray(arr);
+function parse(parser, arr, startIndex)
+{ startIndex = startIndex || 0
+; arr = _.toArray(arr)
 
-  if (doomed(parser)) return [false, startIndex, parser.trace];
-  if (arr.length == 0)
-    return [ parser.match
-           , parser.match ? parser.result : -1, parser.trace];
-  return parse(parser.parseElem(arr[0]),
-               arr.slice(1),
-               startIndex + 1);}
+; if (doomed(parser))
+    return {status: 'doomed', index: startIndex, trace: parser.trace}
+; if (arr.length == 0)
+    return (
+      parser.match
+      ? { status: 'match', result: parser.result}
+      : { status: 'eof', trace: parser.trace})
+; return parse(parser.parseElem(arr[0]), _.tail(arr), startIndex + 1)}
 exports.parse = parse;
 
-function longestMatch(parser, arr) {
-  arr = _.toArray(arr);
+function longestMatch(parser, arr)
+{ arr = _.toArray(arr)
 
-  var toReturn = [false, -1, parser.trace];
-  for (var index = 0; index < arr.length; index++) {
-    if (doomed(parser)) return toReturn[0]
-                        ? toReturn
-                        : [false, index, parser.trace];
-    if (parser.match) toReturn = [true, parser.result, index];
+; var toReturn = {status: 'eof', trace: parser.trace}
+; for (var index = 0; index < arr.length; index++)
+  { if (doomed(parser))
+      return (
+        toReturn.status === 'match'
+        ? toReturn
+        : {status: 'doomed', index: index, trace: parser.trace})
+  ; if (parser.match)
+      toReturn = {status: 'match', index: index, result: parser.result}
 
-    //console.log("parsing: " + arr[index]);
-    parser = parser.parseElem(arr[index]);}
+  ; parser = parser.parseElem(arr[index])}
 
-  if (doomed(parser)) return toReturn[0]
-                             ? toReturn
-                             : [false, arr.length, parser.trace];
-  if (parser.match) toReturn = [true, parser.result, arr.length];
+; if (doomed(parser))
+    return (
+      toReturn.status === 'match'
+      ? toReturn
+      : {status: 'doomed', index: arr.length, trace: parser.trace})
+; if (parser.match)
+    toReturn = {status: 'match', index: arr.length, result: parser.result}
 
-  return toReturn;}
+; return toReturn}
 exports.longestMatch = longestMatch;
 
-function shortestMatch(parser, arr) {
-  arr = _.toArray(arr);
+function shortestMatch(parser, arr)
+{ arr = _.toArray(arr)
 
-  for (var index = 0; index < arr.length; index++) {
-    if (parser.match) return [true, parser.result, index];
-    if (doomed(parser)) return [false, index, parser.trace];
+; for (var index = 0; index < arr.length; index++)
+  { if (parser.match)
+      return {status: 'match', index: index, result: parser.result}
+  ; if (doomed(parser))
+      return {status: 'doomed', index: index, trace: parser.trace}
 
-    parser = parser.parseElem(arr[index]);}
+  ; parser = parser.parseElem(arr[index])}
 
-  if (parser.match) return [true, parser.result, arr.length];
-  if (doomed(parser)) return [false, arr.length, parser.trace];
+; if (parser.match)
+    return {status: 'match', index: arr.length, result: parser.result}
+; if (doomed(parser))
+    return {status: 'doomed', index: arr.length, trace: parser.trace}
 
-  return [false, -1, parser.trace];}
+; return {status: 'eof', trace: parser.trace}}
 exports.shortestMatch = shortestMatch;
 
 function sepByCount(elemFn, sepFn, atLeast1) {
@@ -416,27 +426,27 @@ function assert(parser, fn) {
            expect: parser.expect};}
 exports.assert = assert;
 
-function name
-  (parser, aName)
-  {return _.assign
-          ( {}
-          , parser
-          , { parseElem
-              : function(elem)
-                  {return traced(parser.parseElem(elem), [[aName, 0]]);}});}
+function name(parser, aName)
+{return (
+   _.assign
+   ( {}
+   , parser
+   , { parseElem
+       : function(elem)
+         {return traced(parser.parseElem(elem), [{name: aName, index: 0}])}}))}
 exports.name = name;
 
-function traced
-  (parser, trace)
-  {return _.assign
-          ( {}
-          , parser
-          , { parseElem
-              : function(elem)
-                  {return traced
-                          ( parser.parseElem(elem)
-                          , _.assign([], trace, [undefined, trace[1] + 1]));}
-            , trace: trace.concat(parser.trace)});}
+function traced(parser, trace)
+{return (
+   _.assign
+   ( {}
+   , parser
+   , { parseElem
+       : function(elem)
+         {return traced
+                 ( parser.parseElem(elem)
+                 , _.assign([], trace, [undefined, trace[1] + 1]))}
+     , trace: trace.concat(parser.trace)}))}
 exports.traced = traced;
 
 function unName
