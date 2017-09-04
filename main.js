@@ -271,7 +271,7 @@
           ? toReturn
           : {status: 'doomed', index, parser})
     ; if (match(parser))
-        toReturn = {status: 'match', index, result: result(parser)}
+        toReturn = {status: 'match', index, result: parser}
 
     ; parser = parseElem(parser, arr[index])}
 
@@ -281,21 +281,19 @@
         ? toReturn
         : {status: 'doomed', index: arr.length, parser})
   ; if (match(parser))
-      toReturn = {status: 'match', index: arr.length, result: result(parser)}
+      toReturn = {status: 'match', index: arr.length, result: parser}
 
-  ; return toReturn}
+  ; return _.defaults({result: result(toReturn.result)}, toReturn)}
 ;  exports.longestMatch = longestMatch
 
 ; function shortestMatch(parser, arr)
   { arr = _.toArray(arr)
 
   ; for (let index = 0; index < arr.length; index++)
-    { if (match(parser))
-        return {status: 'match', index, result: result(parser)}
-    ; if (doomed(parser))
-        return {status: 'doomed', index, parser}
+    { if (match(parser)) return {status: 'match', index, result: result(parser)}
+    ; if (doomed(parser)) return {status: 'doomed', index, parser}
 
-    ; if (debug) ;//console.log(arr[index])
+    ; if (debug) console.log(arr[index])
     ; parser = parseElem(parser, arr[index])}
 
   ; if (match(parser))
@@ -443,20 +441,22 @@
       ? fail
       : _.reduceRight
         ( args
-        , function or2(parser1, parser0)
-          { return (
-              nilStacked
-              ( { parseElem
-                  : elem =>
-                    or2(parseElem(parser1, elem), parseElem(parser0, elem))
-                , match: match(parser0) || match(parser1)
-                , result
-                  : match(parser0)
-                  ? result(parser0)
-                  : match(parser1) ? result(parser1) : undefined
-                , noMore: noMore(parser0) && noMore(parser1)
-                , futureSuccess
-                  : futureSuccess(parser0) || futureSuccess(parser1)}))}))}
+        , _.flow
+          ( function or2(parser1, parser0)
+            { return (
+                nilStacked
+                ( { parseElem
+                    : elem =>
+                      or2(parseElem(parser1, elem), parseElem(parser0, elem))
+                  , match: match(parser0) || match(parser1)
+                  , result
+                    : match(parser0)
+                      ? parser0
+                      : match(parser1) ? parser1 : undefined
+                  , noMore: noMore(parser0) && noMore(parser1)
+                  , futureSuccess
+                    : futureSuccess(parser0) || futureSuccess(parser1)}))}
+          , parser => map(parser, result))))}
 ; exports.or = or
 
 ; function and(parsers)
@@ -465,32 +465,30 @@
       ? map(anything, _.stubArray)
       : _.reduceRight
         ( _.initial(parsers)
-        , (parser1, parser0) =>
-          doomed(parser0)
-          ||
-            doomed(parser1)
-          ||
-            !match(parser0) && noMore(parser1)
-          ||
-            !match(parser1) && noMore(parser0)
-          ? fail
-          : map
-            ( nilStacked
-              ( { parseElem
-                  : elem =>
-                    and
-                    ( [ parseElem(parser0, elem)
-                      , parseElem(parser1, elem)])
-                , match: match(parser0) && match(parser1)
-                , result
-                  : match(parser0) && match(parser1)
-                    ? [result(parser0), result(parser1)]
-                    : undefined
-                , noMore: noMore(parser0) || noMore(parser1)
-                , futureSuccess
-                  : futureSuccess(parser0)
-                    && futureSuccess(parser1)})
-            , consArray)
+        , _.flow
+          ( function and2(parser1, parser0)
+            { return (
+                doomed(parser0)
+                ||
+                  doomed(parser1)
+                ||
+                  !match(parser0) && noMore(parser1)
+                ||
+                  !match(parser1) && noMore(parser0)
+                ? fail
+                : nilStacked
+                  ( { parseElem
+                      : elem =>
+                        and2(parseElem(parser1, elem), parseElem(parser0, elem))
+                    , match: match(parser0) && match(parser1)
+                    , result
+                      : match(parser0) && match(parser1)
+                        ? [parser0, parser1]
+                        : undefined
+                    , noMore: noMore(parser0) || noMore(parser1)
+                    , futureSuccess
+                      : futureSuccess(parser0) && futureSuccess(parser1)}))}
+          , parser => map(parser, _.flow(arr => _.map(arr, result), consArray)))
         , map(_.last(parsers), arrayOf)))}
 ; exports.and = and
 
@@ -586,15 +584,11 @@
 
 ; function result(parser)
   { if (debug) console.log(util.inspect(parser.parser, false, null))
-  ; return (
-      log
-      ( "result:"
-      , _.flow
-        ( ...
-            _.flatMap
-            ( log([...dl.reverseIterator(parser.stack)])
-            , entry => entry.type === 'map' ? [entry.fn] : []))
-        (parser.parser.result)))}
+
+  ; let toReturn = parser.parser.result
+  ; for (const entry of dl.reverseIterator(parser.stack))
+      if (log(entry).type === 'map') toReturn = entry.fn(toReturn)
+  ; return log("result:", toReturn)}
 ; exports.result = result
 
 ; function parseElem(parser, elem)
@@ -609,18 +603,15 @@
 ; function noMore(parser) {return parserp(parser).parser.noMore}
 ; exports.noMore = noMore
 
-; function futureSuccess(parser)
-  {return parserp(parser).parser.futureSuccess}
+; function futureSuccess(parser) {return parserp(parser).parser.futureSuccess}
 ; exports.futureSuccess = futureSuccess
 
-; function doomed(parser)
-  {return !match(parser) && noMore(parser)}
+; function doomed(parser) {return !match(parser) && noMore(parser)}
 ; exports.doomed = doomed
 
 ; function notDoomed(parser) {return !doomed(parser)}
 
-; function alwaysSuccessful(parser)
-  {return match(parser) && futureSuccess(parser)}
+; function alwaysSuccessful(parser) {return match(parser) && futureSuccess(parser)}
 ; exports.alwaysSuccessful = alwaysSuccessful
 
 ; function recurseLeft(recursive, nonrecursive, emptyCriteria)

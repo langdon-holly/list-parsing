@@ -15,11 +15,12 @@
       begin.type === 'cons' ? cons(begin.head, concat(begin.tail, end)) : end)}
 
 ; function toArray(list)
-  {return list.type === 'nil' ? [] : [list.head].concat(toArray(list.tail))}
+  { let toReturn = []
+  ; while (list.type === 'cons') {toReturn.push(list.head); list = list.tail}
+  ; return toReturn}
 
 ; function toArrayReverse(list)
-  { return (
-      list.type === 'nil' ? [] : toArrayReverse(list.tail).concat([list.head]))}
+  { return toArray(list).reverse()}
 
 ; const cons = (head, tail) => ({type: 'cons', head, tail})
 
