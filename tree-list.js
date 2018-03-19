@@ -137,6 +137,29 @@
         ()
   , nil = New({length: 0})
   , t = {[Symbol.hasInstance]: o => o instanceof New}
+  //, head
+  //  = list => {while (isParent(list)) list = begin(list); return unjust(list)}
+  //, last
+  //  = list => {while (isParent(list)) list = end(list); return unjust(list)}
+  , initialLastLinkHeadward
+    = list =>
+      { let {node: {val: last}, stack} = addDeep(false)(list, ll.nil), initial = nil
+      ; stack = ll.reverse(stack)
+      ; while (!ll.isNil(stack))
+          initial = concat(initial, begin(ll.head(stack))), stack = ll.tail(stack)
+      ; return {initial, last}}
+
+  , headTailLinkHeadward
+    = list =>
+      { let {node: {val: head}, stack} = addDeep(true)(list, ll.nil), tail = nil
+      ; while (!ll.isNil(stack))
+          tail = concat(tail, end(ll.head(stack))), stack = ll.tail(stack)
+      ; return {head, tail}}
+  , toLinkedReverse
+    = list =>
+    { let ret = ll.nil
+    ; for (const elem of list) ret = ll.cons(elem, ret)
+    ; return ret}
 
 ; module.exports
   = { cons
@@ -164,7 +187,18 @@
             ? index(list)(idx)
             : throwTypeError("index is unnatural: " + idx)
     , iterator
-    , reverseIterator}
+    , reverseIterator
+    , headTailLinkHeadward
+      : list =>
+          isNil(list)
+          ? throwTypeError("list is childless")
+          : headTailLinkHeadward(list)
+    , initialLastLinkHeadward
+      : list =>
+          isNil(list)
+          ? throwTypeError("list is childless")
+          : initialLastLinkHeadward(list)
+    , toLinkedReverse}
 
 //; for (const e of reverseIterator(cons(4, concat(just(3), just(5)))))
 //    console.log(e)

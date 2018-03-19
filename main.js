@@ -12,18 +12,24 @@
   , _ = require('lodash')
 
   , ll = _.assign({}, require('./linked-list'))
-  , dl = _.assign({}, require('./deep-list'))
+  , tl = _.assign({}, require('./tree-list'))
 
-; if (!debug) {dl.p = ll.p = _.identity}
+; if (!debug) {tl.p = ll.p = _.identity}
 
 // Utility
 
 ; const
-    log = (...args) => (debug ? console.log(...args) : undefined, _.last(args))
+    inspect = o => util.inspect(o, {depth: null, colors: true})
+  , log = (...args) =>
+    (debug && console.log(args.map(inspect).join("\n")), _.last(args))
   , throwTypeError = (...args) => {throw TypeError(...args)}
   , mab // maybe
     = { nothing: {is: false}
-      , just: val => ({is: true, val: val})
+      , just: val => ({is: true, val})
+      , unjust
+        : maybe =>
+            { if (maybe.is) return mab._val(maybe)
+            ; throw new Error("Nothing was unjustified")}
       , is: maybe => maybe.is
       , _val: maybe => maybe.val
       , def: (maybe, def) => mab.is(maybe) ? mab._val(maybe) : def
@@ -62,7 +68,7 @@
   //          _.isBoolean(o.futureSuccess)
   //        &&
   //          o.hasOwnProperty('stack'))
-  //        ? (dl.p(o.stack), o)
+  //        ? (tl.p(o.stack), o)
   //        : expectedButGot("stacked parser", o)
   //      : o
   , fnp = o => debug && !_.isFunction(o) ? expectedButGot("function", o) : o
@@ -70,65 +76,118 @@
 // Stuff
 
 ; exports = module.exports
-; exports.nil = dl.nil
+; exports.nil = tl.nil
 
-; const parserp = _.identity //TODO: parser type
+; const
+  parserp
+  = debug
+    ? parser =>
+      { if
+          ( ! ( parser.thenStack instanceof tl.t
+                && parser.mapStack instanceof tl.t))
+          throw new TypeError(inspect(parser))
+      ; return parser}
+    : _.identity //TODO: parser type
 
-; const nilStacked = parser => ({stack: dl.nil, parser})
+; const nilStacked
+  = parser =>
+      ( { mapStack: tl.nil
+        , traceStack: tl.nil
+        , thenStack: tl.nil
+        , thensKeepAlwaysSuccessful: 0
+        , parser})
 ; exports.nilStacked = nilStacked
 
-; const returnFail = () => fail
+; const returnFailIn = parser => _.constant(failIn(parser))
 
-; const fail
-  = nilStacked
-    ( { parseElem: returnFail
-      , match: false
-      , result: undefined
-      , noMore: true
-      , futureSuccess: false})
+; const failIn
+  = parser =>
+      ( { mapStack: tl.nil
+        , traceStack: parser.traceStack
+        , thenStack: tl.nil
+        , thensKeepAlwaysSuccessful: 0
+        , parser
+          : { parseElem: () => failIn(parser)
+            , match: false
+            , result: undefined
+            , noMore: true
+            , futureSuccess: false}})
+; exports.failIn = failIn
+
+; const fail = failIn({traceStack: tl.nil})
 ; exports.fail = fail
+
+; const returnFail = _.constant(fail)
+
+; function llSeq2(parser0, parser1)
+  { if (doomed(parser1)) return fail
+  ; const
+      parser1Match = match(parser1)
+    , thenFn
+      = parser =>
+          or
+          ( [ then2(parser, thenFn, parser1Match)
+            , map(parser1, pt => ll.cons(pt, result(parser)))])
+  ; return (
+      match(parser0)
+      ? thenFn(parser0)
+      : then2(parser0, thenFn, parser1Match))}
+
+//; function llSeq2(parser0, parser1)
+//  { return (
+//      ( contFirst =>
+//          match(parser0)
+//          ? or([contFirst, map(parser1, pt => ll.cons(pt, result(parser0)))])
+//          : contFirst)
+//      ( noMore(parser0) || doomed(parser1)
+//        ? failIn(parser0)
+//        : nilStacked
+//          ( { parseElem: elem => llSeq2(parseElem(parser0, elem), parser1)
+//            , match: false
+//            , result: undefined
+//            , noMore: false
+//            , futureSuccess: futureSuccess(parser0) && match(parser1)})))}
 
 ; function llSeq(args)
   { return (
-      args.length == 0
+      args.length === 0
       ? map(nothing, _.stubArray)
       : _.reduce
         ( _.tail(args)
-        , function llSeq2(parser0, parser1)
-          { return (
-              ( contFirst =>
-                  match(parser0)
-                  ? or
-                    ( [ contFirst
-                      , map(parser1, pt => ll.cons(pt, result(parser0)))])
-                  : contFirst)
-              ( noMore(parser0) || doomed(parser1)
-                ? fail
-                : nilStacked
-                  ( { parseElem
-                      : elem => llSeq2(parseElem(parser0, elem), parser1)
-                    , match: false
-                    , result: undefined
-                    , noMore: false
-                    , futureSuccess
-                      : futureSuccess(parser0) && match(parser1)})))}
+        , llSeq2
         , map(args[0], llOf)))}
 
 ; function seq(args) {return map(llSeq(args), ll.toArrayReverse)}
 ; exports.seq = seq
 
+; function then2(parser, fn, fnKeepsAlwaysSuccessful)
+  { return (
+      noMore(parser)
+      ? failIn(parser)
+      : { mapStack: tl.nil
+        , traceStack: parser.traceStack
+        , thenStack: tl.cons({mapStack: parser.mapStack, fn}, parser.thenStack)
+        , thensKeepAlwaysSuccessful
+          : fnKeepsAlwaysSuccessful ? parser.thensKeepAlwaysSuccessful + 1 : 0
+        , parser: parser.parser})}
+
 ; function then2Prev(parser, fn)
-  { const contFirst
-    = noMore(parser)
-      ? fail
-      : nilStacked
-        ( { parseElem
-            : elem => then2Prev(parseElem(parser, elem), fn)
-          , match: false
-          , result: undefined
-          , noMore: false
-          , futureSuccess: false})
-  ; return match(parser) ? or([contFirst, fn(result(parser))]) : contFirst}
+  { const thenFn
+    = parser => or([then2(parser, thenFn, false), fn(result(parser))])
+  ; return match(parser) ? thenFn(parser) : then2(parser, thenFn, false)}
+
+//; function then2Prev(parser, fn)
+//  { const contFirst
+//    = noMore(parser)
+//      ? failIn(parser)
+//      : nilStacked
+//        ( { parseElem
+//            : elem => then2Prev(parseElem(parser, elem), fn)
+//          , match: false
+//          , result: undefined
+//          , noMore: false
+//          , futureSuccess: false})
+//  ; return match(parser) ? or([contFirst, fn(result(parser))]) : contFirst}
 
 ; function then(parser, fns) {return _.reduce(fns, then2Prev, parser)}
 ; exports.then = then
@@ -183,7 +242,7 @@
   { const toReturn
     = nilStacked
       ( { match: true
-        , result: result
+        , result
         , noMore: false
         , futureSuccess: true})
   ; toReturn.parser.parseElem = _.constant(toReturn)
@@ -252,7 +311,7 @@
 
   ; if (doomed(parser))
       return {status: 'doomed', index: startIndex, parser}
-  ; if (arr.length == 0)
+  ; if (arr.length === 0)
       return (
         match(parser)
         ? {status: 'match', result: result(parser)}
@@ -283,26 +342,71 @@
   ; if (match(parser))
       toReturn = {status: 'match', index: arr.length, result: parser}
 
-  ; return _.defaults({result: result(toReturn.result)}, toReturn)}
+  ; return {...toReturn, result: result(toReturn.result)}}
 ;  exports.longestMatch = longestMatch
 
-; function shortestMatch(parser, arr)
-  { arr = _.toArray(arr)
+; function* shortestMatchIterator(parser)
+  { let elem, index = 0
+  ; if (match(parser)) return {status: 'match', index, result: result(parser)}
+  ; if (doomed(parser)) return {status: 'doomed', index, parser}
 
-  ; for (let index = 0; index < arr.length; index++)
-    { if (match(parser)) return {status: 'match', index, result: result(parser)}
-    ; if (doomed(parser)) return {status: 'doomed', index, parser}
+  ; while (!({value: elem} = yield).done)
+    { if (debug) log(index, elem)
+    ; parser = parseElem(parser, elem)
+    ; index++
+    ; if (match(parser)) return {status: 'match', index, result: result(parser)}
+    ; if (doomed(parser)) return {status: 'doomed', index, parser}}
 
-    ; if (debug) console.log(arr[index])
-    ; parser = parseElem(parser, arr[index])}
+  ; return {status: 'eof', index: index + 1, parser}}
 
-  ; if (match(parser))
-      return {status: 'match', index: arr.length, result: result(parser)}
-  ; if (doomed(parser))
-      return {status: 'doomed', index: arr.length, parser}
+; function iterableIntoIterator(to, from)
+  { from = from[Symbol.iterator]()
+  ; let res = to.next()
+  ; while (!res.done) res = to.next(from.next())
+  ; return res.value}
 
-  ; return {status: 'eof', parser}}
+; function streamIntoIterator(to, from)
+  { return (
+      new Promise
+      ( resolve =>
+        { let res = to.next()
+        ; const wStream
+            = require('stream').Writable
+              ( { write(value, encoding, cb)
+                  { if ((res = to.next({value})).done)
+                      resolve(res.value), from.unpipe(this)
+                  ; cb(null)}
+                , final(cb)
+                  { resolve(to.next({done: true}).value), from.unpipe(this)
+                  ; cb(null)}
+                , objectMode: true})
+        ; from.pipe(wStream)}))}
+
+; function shortestMatch(parser, iterable)
+  {return iterableIntoIterator(shortestMatchIterator(parser), iterable)}
 ; exports.shortestMatch = shortestMatch
+
+; function streamShortestMatch(parser, stream)
+  {return streamIntoIterator(shortestMatchIterator(parser), stream)}
+; exports.streamShortestMatch = streamShortestMatch
+
+//; function shortestMatch(parser, arr)
+//  { arr = _.toArray(arr)
+//
+//  ; for (let index = 0; index < arr.length; index++)
+//    { if (match(parser)) return {status: 'match', index, result: result(parser)}
+//    ; if (doomed(parser)) return {status: 'doomed', index, parser}
+//
+//    ; if (debug) console.log(arr[index])
+//    ; parser = parseElem(parser, arr[index])}
+//
+//  ; if (match(parser))
+//      return {status: 'match', index: arr.length, result: result(parser)}
+//  ; if (doomed(parser))
+//      return {status: 'doomed', index: arr.length, parser}
+//
+//  ; return {status: 'eof', parser}}
+//; exports.shortestMatch = shortestMatch
 
 ; function sepByCount(elemFn, sepFn, atLeast1)
   { if (!atLeast1)
@@ -329,10 +433,7 @@
 ; exports.opt = opt
 
 ; function map(parser, fn)
-  { return (
-      parserp
-      ( { parser: parser.parser
-        , stack: dl.cons({type: 'map', fn}, parser.stack)}))}
+  {return parserp({...parser, mapStack: tl.cons(fn, parser.mapStack)})}
 ; exports.map = map
 
 //; function failYields(parser, result)
@@ -363,8 +464,9 @@
 ; function name(parser, aName)
   { return (
       parserp
-      ( { parser: parser.parser
-        , stack: dl.cons({type: 'name', name: aName}, parser.stack)}))}
+      ( _.defaults
+        ( {traceStack: tl.cons({type: 'name', name: aName}, parser.traceStack)}
+        , parser)))}
 ; exports.name = name
 
 //; function stacked(parser)
@@ -397,7 +499,8 @@
 //     _.assign
 //     ( {}
 //     , parser
-//     , { parseElem: function(elem) {return name(parser.parseElem(elem), aName)}}))}
+//     , { parseElem
+//         : function(elem) {return name(parser.parseElem(elem), aName)}}))}
 //; exports.unName = unName
 
 ; function shortest(parser)
@@ -406,7 +509,9 @@
       ( { parser
           : { parseElem
               : elem =>
-                  match(parser) ? fail : shortest(parseElem(parser, elem))
+                  match(parser)
+                  ? failIn(parser)
+                  : shortest(parseElem(parser, elem))
             , noMore: noMore(parser) || match(parser)
             , futureSuccess: false}}
       , parser))}
@@ -425,7 +530,7 @@
 ; exports.around = around
 
 ; function between(parsers)
-  { if (parsers.length % 2 == 1)
+  { if (parsers.length % 2 === 1)
       return after(between(_.initial(parsers)), _.last(parsers))
   ; return (
       seq
@@ -437,8 +542,8 @@
   { const args = _.filter(parsers, notDoomed)
 
   ; return (
-      args.length == 0
-      ? fail
+      args.length === 0
+      ? parsers.length === 0 ? fail : failIn(parsers[0])
       : _.reduceRight
         ( args
         , _.flow
@@ -461,7 +566,7 @@
 
 ; function and(parsers)
   { return (
-      parsers.length == 0
+      parsers.length === 0
       ? map(anything, _.stubArray)
       : _.reduceRight
         ( _.initial(parsers)
@@ -475,7 +580,7 @@
                   !match(parser0) && noMore(parser1)
                 ||
                   !match(parser1) && noMore(parser0)
-                ? fail
+                ? failIn(parser0)
                 : nilStacked
                   ( { parseElem
                       : elem =>
@@ -497,7 +602,7 @@
       throwTypeError('Argument to lengthIs must be nonnegative integer')
   ; return (
       nilStacked
-      ( len == 0
+      ( len === 0
         ? { parseElem: returnFail
           , match: true
           , result: []
@@ -537,73 +642,130 @@
       , futureSuccess: false})
 ; exports.nothing = nothing
 
-; const hSpaceChar
-  = or
-    ( [ string('\t')
-      , string(' ')
-      , string('\u00A0')
-      , string('\u1680')
-      , string('\u2000')
-      , string('\u2001')
-      , string('\u2002')
-      , string('\u2003')
-      , string('\u2004')
-      , string('\u2005')
-      , string('\u2006')
-      , string('\u2007')
-      , string('\u2008')
-      , string('\u2009')
-      , string('\u200A')
-      , string('\u202F')
-      , string('\u205F')
-      , string('\u3000')])
-; exports.hSpaceChar = hSpaceChar
+//; const hSpaceChar
+//  = or
+//    ( [ string('\t')
+//      , string(' ')
+//      , string('\u00A0')
+//      , string('\u1680')
+//      , string('\u2000')
+//      , string('\u2001')
+//      , string('\u2002')
+//      , string('\u2003')
+//      , string('\u2004')
+//      , string('\u2005')
+//      , string('\u2006')
+//      , string('\u2007')
+//      , string('\u2008')
+//      , string('\u2009')
+//      , string('\u200A')
+//      , string('\u202F')
+//      , string('\u205F')
+//      , string('\u3000')])
+//; exports.hSpaceChar = hSpaceChar
+//
+//; const hSpace = many1(hSpaceChar)
+//; exports.hSpace = hSpace
+//
+//; const vSpaceChar
+//  = or
+//    ( [ string('\u000A')
+//      , string('\u000B')
+//      , string('\f')
+//      , string('\r')
+//      , string('\u0085')
+//      , string('\u2028')
+//      , string('\u2029')])
+//; exports.vSpaceChar = vSpaceChar
+//
+//; const vSpace = many1(vSpaceChar)
+//; exports.vSpace = vSpace
+//
+//; const wsChar = or([hSpaceChar, vSpaceChar])
+//; exports.wsChar = wsChar
+//
+//; const ws = many1(wsChar)
+//; exports.ws = ws
 
-; const hSpace = many1(hSpaceChar)
-; exports.hSpace = hSpace
-
-; const vSpaceChar
-  = or
-    ( [ string('\u000A')
-      , string('\u000B')
-      , string('\f')
-      , string('\r')
-      , string('\u0085')
-      , string('\u2028')
-      , string('\u2029')])
-; exports.vSpaceChar = vSpaceChar
-
-; const vSpace = many1(vSpaceChar)
-; exports.vSpace = vSpace
-
-; const wsChar = or([hSpaceChar, vSpaceChar])
-; exports.wsChar = wsChar
-
-; const ws = many1(wsChar)
-; exports.ws = ws
-
-; function result(parser)
-  { if (debug) console.log(util.inspect(parser.parser, false, null))
-
-  ; let toReturn = parser.parser.result
-  ; for (const entry of dl.reverseIterator(parser.stack))
-      if (log(entry).type === 'map') toReturn = entry.fn(toReturn)
-  ; return log("result:", toReturn)}
-; exports.result = result
+; const elemMarker = {type: 'elem-marker'}
 
 ; function parseElem(parser, elem)
-  { const parsed = parser.parser.parseElem(elem)
-  ; return (
-      {stack: dl.concat(parser.stack, parsed.stack), parser: parsed.parser})}
+  { let
+      parsed = parser.parser.parseElem(elem)
+    , thensKeepAlwaysSuccessful = parser.thensKeepAlwaysSuccessful
+    , mapStack = parser.mapStack
+    , thenStack = parser.thenStack
+    , outInitial
+    , outLastMap
+    , outLastThen
+    , lastMap
+    , lastThen
+
+  ; while
+    ( thensKeepAlwaysSuccessful === tl.length(thenStack)
+      && (thensKeepAlwaysSuccessful += parsed.thensKeepAlwaysSuccessful)
+      , ( [mapStack, thenStack]
+          = tl.isNil(thenStack)
+            ? [tl.concat(mapStack, parsed.mapStack), parsed.thenStack,,]
+            : [ mapStack
+              , ( { initial: outInitial
+                  , last: {mapStack: outLastMap, fn: outLastThen}}
+                  = tl.initialLastLinkHeadward(thenStack)
+                , tl.concat
+                  ( tl.append
+                    ( outInitial
+                    , { mapStack: tl.concat(outLastMap, parsed.mapStack)
+                      , fn: outLastThen})
+                  , parsed.thenStack))])
+        .length
+        - 3
+        && match(parsed))
+    ( {initial: thenStack, last: {mapStack: lastMap, fn: lastThen}}
+      = tl.initialLastLinkHeadward(thenStack))
+    , thensKeepAlwaysSuccessful
+      = Math.min(thensKeepAlwaysSuccessful, tl.length(thenStack))
+    , parsed
+      = lastThen
+        ( { mapStack: lastMap
+          , thenStack: tl.nil
+          , thensKeepAlwaysSuccessful: 0
+          , parser: parsed.parser})
+
+  ; return {...parsed, mapStack, thenStack, thensKeepAlwaysSuccessful
+      /*, traceStack: tl.append(parser.traceStack, elemMarker)*/}}
 ; exports.parseElem = parseElem
 
-; function match(parser) {return parserp(parser).parser.match}
+; function result(parser)
+  { //if (debug) console.log(util.inspect(parser.parser, false, null))
+
+  ; if (!tl.isNil(parser.thenStack)) throw new TypeError("Then result")
+
+  ; let toReturn = parser.parser.result
+  ; for (const fn of tl.reverseIterator(parser.mapStack))
+      toReturn = fn(toReturn)
+  ; return toReturn}
+; exports.result = result
+
+; function trace(parser)
+  { let toReturn = [], index = 0
+  ; for (const entry of parser.traceStack)
+      entry.type === 'name' ? toReturn.push({name: entry.name, index})
+      : entry.type === 'elem-marker' ? index++
+      : 0
+  ; return "trace:", toReturn}
+; exports.trace = trace
+
+; function match(parser)
+  {return tl.isNil(parserp(parser).thenStack) && parser.parser.match}
 ; exports.match = match
 
 ; function noMore(parser) {return parserp(parser).parser.noMore}
 ; exports.noMore = noMore
 
-; function futureSuccess(parser) {return parserp(parser).parser.futureSuccess}
+; function futureSuccess(parser)
+  { return (
+      parserp(parser).parser.futureSuccess
+      && parser.thensKeepAlwaysSuccessful === tl.length(parser.thenStack))}
 ; exports.futureSuccess = futureSuccess
 
 ; function doomed(parser) {return !match(parser) && noMore(parser)}
@@ -611,12 +773,13 @@
 
 ; function notDoomed(parser) {return !doomed(parser)}
 
-; function alwaysSuccessful(parser) {return match(parser) && futureSuccess(parser)}
+; function alwaysSuccessful(parser)
+  {return match(parser) && futureSuccess(parser)}
 ; exports.alwaysSuccessful = alwaysSuccessful
 
 ; function recurseLeft(recursive, nonrecursive, emptyCriteria)
   { return map
-           ( match(recursive(dl.nil)) && emptyCriteria
+           ( match(recursive(tl.nil)) && emptyCriteria
              ? seq([map(opt(nonrecursive), mab.toArr), many(recursive)])
              : seq([map(nonrecursive, arrayOf), many(recursive)])
            , _.flatten)}
@@ -624,7 +787,7 @@
 
 ; function recurseRight(recursive, nonrecursive, emptyCriteria)
   { return map
-           ( match(recursive(dl.nil)) && emptyCriteria
+           ( match(recursive(tl.nil)) && emptyCriteria
              ? seq([many(recursive), map(opt(nonrecursive), mab.toArr)])
              : seq([many(recursive), map(nonrecursive, arrayOf)])
            , _.flatten)}

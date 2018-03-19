@@ -42,6 +42,14 @@
       ? throwTypeError("nil is tailless")
       : list.tail
 
+; const reverseConcat
+  = (list0, list1) =>
+    { while (!isNil(list0))
+        list1 = cons(head(list0), list1), list0 = tail(list0)
+    ; return list1}
+
+; const reverse = list => reverseConcat(list, nil)
+
 ; const
     p
     = o =>
@@ -59,5 +67,15 @@
       ()
 
 ; module.exports
-  = {cons, nil, isNil, head, tail, p, concat, toArray, toArrayReverse}
+  = { cons
+    , nil
+    , isNil
+    , head
+    , tail
+    , p
+    , concat
+    , toArray
+    , toArrayReverse
+    , reverseConcat
+    , reverse}
 
