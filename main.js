@@ -365,6 +365,12 @@
   ; while (!res.done) res = to.next(from.next())
   ; return res.value}
 
+; async function asyncIterableIntoIterator(to, from)
+  { from = from[Symbol.asyncIterator]();
+    let res = to.next();
+    while (!res.done) res = to.next(await from.next());
+    return res.value}
+
 ; function streamIntoIterator(to, from)
   { return (
       new Promise
@@ -382,13 +388,13 @@
                 , objectMode: true})
         ; from.pipe(wStream)}))}
 
-; function shortestMatch(parser, iterable)
-  {return iterableIntoIterator(shortestMatchIterator(parser), iterable)}
-; exports.shortestMatch = shortestMatch
-
-; function streamShortestMatch(parser, stream)
-  {return streamIntoIterator(shortestMatchIterator(parser), stream)}
-; exports.streamShortestMatch = streamShortestMatch
+Object.assign
+( exports
+, _.mapValues
+  ( { shortestMatch: iterableIntoIterator
+    , asyncIterableShortestMatch: asyncIterableIntoIterator
+    , streamShortestMatch: streamIntoIterator}
+  , intoer => (parser, data) => intoer(shortestMatchIterator(parser), data)));
 
 //; function shortestMatch(parser, arr)
 //  { arr = _.toArray(arr)
