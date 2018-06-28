@@ -1,6 +1,6 @@
 {
   "name": "list-parsing",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "(iterable/async iterable/Node.js stream)-parser combinator library",
   "main": "main.js",
   "scripts": {
