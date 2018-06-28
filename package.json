@@ -1,7 +1,7 @@
 {
   "name": "list-parsing",
   "version": "0.4.1",
-  "description": "(sequence/string parser) combinator library",
+  "description": "(iterable/async iterable/Node.js stream)-parser combinator library",
   "main": "main.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
