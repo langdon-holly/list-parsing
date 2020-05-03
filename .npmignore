@@ -1,5 +1,4 @@
 .gitignore
 .npmignore
-stream-test.js
-TODO.TXT
-
+LICENSE
+TODO

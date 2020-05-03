@@ -1,11 +1,8 @@
 {
   "name": "list-parsing",
-  "version": "0.4.2",
-  "description": "(iterable/async iterable/Node.js stream)-parser combinator library",
+  "version": "0.5.0",
+  "description": "parser combinators for iterables, async iterables, and Node.js streams",
   "main": "main.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/langdon-holly/list-parsing.git"
@@ -18,12 +15,10 @@
     "parser combinators"
   ],
   "author": "Langdon Holly",
-  "license": "SEE LICENSE IN LICENSE.TXT",
+  "license": "0BSD",
   "bugs": {
     "url": "https://github.com/langdon-holly/list-parsing/issues"
   },
-  "homepage": "https://github.com/langdon-holly/list-parsing#readme",
-  "dependencies": {
-    "lodash": "^4.17.4"
-  }
+  "homepage": "https://github.com/langdon-holly/list-parsing",
+  "dependencies": {}
 }
